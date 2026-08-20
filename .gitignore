@@ -1,0 +1,41 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (large files)
+data/vectorstore/
+data/models/
+*.npy
+*.bin
+*.gguf
+*.safetensors
+
+# Logs
+logs/
+*.log
+
+# Output
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with secrets
+config/settings.json
+
