@@ -1,5 +1,5 @@
 ﻿"""
-混合智能体 - 支持本地模型和云端 API
+混合智能体 - 支持本地模型、llama.cpp 和云端 API
 """
 
 import os
@@ -21,9 +21,15 @@ class HybridAgent:
         self.examples = []
         self.vectorstore = None
         self.embeddings = None
+        
+        # 模型相关
         self.local_model = None
         self.local_tokenizer = None
+        self.llama_engine = None
         self.api_configured = bool(self.config.get("api", {}).get("api_key"))
+        
+        # 初始化 llama.cpp
+        self._init_llama_engine()
     
     def _load_config(self) -> dict:
         """加载配置"""
@@ -37,7 +43,14 @@ class HybridAgent:
             "local_model": {
                 "path": "",
                 "device": "auto",
-                "load_in_4bit": True
+                "load_in_4bit": True,
+                "engine": "auto"  # auto, llama_cpp, transformers
+            },
+            "llama_cpp": {
+                "path": "",
+                "gpu_layers": 999,
+                "context_size": 4096,
+                "threads": 4
             },
             "rag": {
                 "embedding_model": "BAAI/bge-small-zh-v1.5",
@@ -56,10 +69,13 @@ class HybridAgent:
                     saved = json.load(f)
                     for key in default:
                         if key in saved:
-                            default[key].update(saved[key])
+                            if isinstance(default[key], dict) and isinstance(saved[key], dict):
+                                default[key].update(saved[key])
+                            else:
+                                default[key] = saved[key]
                     return default
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"加载配置失败: {e}")
         return default
     
     def save_config(self):
@@ -67,6 +83,29 @@ class HybridAgent:
         os.makedirs(CONFIG_FILE.parent, exist_ok=True)
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
+    
+    def _init_llama_engine(self):
+        """初始化 llama.cpp 引擎"""
+        try:
+            from server.core.llama_engine import LlamaCppEngine, CUDAManager
+            
+            # 检查 CUDA
+            if CUDAManager.is_available():
+                gpu_info = CUDAManager.get_gpu_info()
+                logger.info(f"CUDA 可用: {gpu_info.get('gpus', [{}])[0].get('name', 'Unknown')}")
+            else:
+                logger.info("CUDA 不可用，将使用 CPU")
+            
+            # 初始化 llama.cpp
+            self.llama_engine = LlamaCppEngine(self.config.get("llama_cpp", {}))
+            
+            if self.llama_engine.is_available():
+                logger.info("llama.cpp 引擎已就绪")
+            else:
+                logger.info("llama.cpp 未找到，将使用其他引擎")
+                
+        except Exception as e:
+            logger.warning(f"初始化 llama.cpp 失败: {e}")
     
     def initialize(self):
         """初始化"""
@@ -78,10 +117,8 @@ class HybridAgent:
         # 尝试加载向量索引
         self._load_vectorstore()
         
-        # 如果配置了本地模型，尝试加载
-        local_path = self.config.get("local_model", {}).get("path", "")
-        if local_path and os.path.exists(local_path):
-            self._load_local_model(local_path)
+        # 加载本地模型
+        self._load_local_model()
         
         logger.info("HybridAgent 初始化完成")
     
@@ -89,6 +126,7 @@ class HybridAgent:
         """重新加载"""
         self.config = self._load_config()
         self.api_configured = bool(self.config.get("api", {}).get("api_key"))
+        self._init_llama_engine()
         self.initialize()
     
     def _load_examples(self):
@@ -134,13 +172,70 @@ class HybridAgent:
             except Exception as e:
                 logger.error(f"加载向量索引失败: {e}")
     
-    def _load_local_model(self, model_path: str):
+    def _load_local_model(self):
         """加载本地模型"""
+        model_path = self.config.get("local_model", {}).get("path", "")
+        if not model_path or not Path(model_path).exists():
+            return
+        
+        engine = self.config.get("local_model", {}).get("engine", "auto")
+        
+        # 自动选择引擎
+        if engine == "auto":
+            # 如果是 GGUF 文件，使用 llama.cpp
+            if Path(model_path).suffix.lower() == '.gguf' or Path(model_path).is_file():
+                if self.llama_engine and self.llama_engine.is_available():
+                    engine = "llama_cpp"
+                else:
+                    engine = "transformers"
+            else:
+                engine = "transformers"
+        
+        # 加载模型
+        if engine == "llama_cpp":
+            self._load_llama_model(model_path)
+        else:
+            self._load_transformers_model(model_path)
+    
+    def _load_llama_model(self, model_path: str):
+        """使用 llama.cpp 加载模型"""
+        if not self.llama_engine:
+            logger.error("llama.cpp 引擎未初始化")
+            return
+        
+        try:
+            # 如果是目录，查找 GGUF 文件
+            path = Path(model_path)
+            if path.is_dir():
+                gguf_files = list(path.glob("*.gguf"))
+                if gguf_files:
+                    model_path = str(gguf_files[0])
+                else:
+                    logger.error(f"目录中未找到 GGUF 文件: {model_path}")
+                    return
+            
+            # 计算最优 GPU 层数
+            from server.core.llama_engine import CUDAManager
+            model_size_mb = Path(model_path).stat().st_size / (1024 * 1024)
+            optimal_layers = CUDAManager.get_optimal_gpu_layers(model_size_mb)
+            self.llama_engine.gpu_layers = optimal_layers
+            
+            # 加载模型
+            if self.llama_engine.load_model(model_path):
+                logger.info(f"llama.cpp 模型加载成功，GPU 层数: {optimal_layers}")
+            else:
+                logger.error("llama.cpp 模型加载失败")
+                
+        except Exception as e:
+            logger.error(f"加载 llama 模型失败: {e}")
+    
+    def _load_transformers_model(self, model_path: str):
+        """使用 transformers 加载模型"""
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
             import torch
             
-            logger.info(f"加载本地模型: {model_path}")
+            logger.info(f"加载 transformers 模型: {model_path}")
             
             # 量化配置
             bnb_config = None
@@ -163,10 +258,10 @@ class HybridAgent:
                 low_cpu_mem_usage=True
             )
             
-            logger.info("本地模型加载成功")
+            logger.info("transformers 模型加载成功")
             
         except Exception as e:
-            logger.error(f"加载本地模型失败: {e}")
+            logger.error(f"加载 transformers 模型失败: {e}")
             self.local_model = None
     
     def create_index(self):
@@ -265,9 +360,15 @@ class HybridAgent:
         prompt = self._build_prompt(topic, length, requirements, references)
         
         # 选择模型生成
-        if use_model == "local" and self.local_model:
-            content = self._generate_local(prompt)
-            model_used = "local"
+        if use_model == "local":
+            if self.llama_engine and self.llama_engine.is_loaded:
+                content = self._generate_llama(prompt)
+                model_used = "llama_cpp"
+            elif self.local_model:
+                content = self._generate_transformers(prompt)
+                model_used = "transformers"
+            else:
+                raise ValueError("本地模型未加载")
         else:
             content = self._generate_api(prompt)
             model_used = "api"
@@ -275,7 +376,7 @@ class HybridAgent:
         return {
             "content": content,
             "word_count": len(content),
-            "style_score": 8.0,  # 简化评分
+            "style_score": 8.0,
             "model_used": model_used
         }
     
@@ -298,8 +399,20 @@ class HybridAgent:
 
 请直接输出文章内容，不要添加任何说明。"""
     
-    def _generate_local(self, prompt: str) -> str:
-        """使用本地模型生成"""
+    def _generate_llama(self, prompt: str) -> str:
+        """使用 llama.cpp 生成"""
+        try:
+            return self.llama_engine.generate(
+                prompt=prompt,
+                max_tokens=self.config["generation"]["max_tokens"],
+                temperature=self.config["generation"]["temperature"]
+            )
+        except Exception as e:
+            logger.error(f"llama.cpp 生成失败: {e}")
+            raise
+    
+    def _generate_transformers(self, prompt: str) -> str:
+        """使用 transformers 生成"""
         try:
             import torch
             
@@ -318,7 +431,7 @@ class HybridAgent:
             return response[len(prompt):].strip()
             
         except Exception as e:
-            logger.error(f"本地生成失败: {e}")
+            logger.error(f"transformers 生成失败: {e}")
             raise
     
     def _generate_api(self, prompt: str) -> str:
@@ -357,4 +470,19 @@ class HybridAgent:
             raise Exception(f"API 调用失败: {response.status_code}")
         
         return response.json()["choices"][0]["message"]["content"]
+    
+    def get_status(self) -> Dict:
+        """获取状态"""
+        from server.core.llama_engine import CUDAManager
+        
+        return {
+            "api_configured": self.api_configured,
+            "llama_available": self.llama_engine is not None and self.llama_engine.is_available(),
+            "llama_loaded": self.llama_engine is not None and self.llama_engine.is_loaded,
+            "transformers_loaded": self.local_model is not None,
+            "cuda_available": CUDAManager.is_available(),
+            "cuda_info": CUDAManager.get_gpu_info() if CUDAManager.is_available() else None,
+            "vectorstore_loaded": self.vectorstore is not None,
+            "examples_count": len(self.examples)
+        }
 

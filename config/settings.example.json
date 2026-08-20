@@ -1,14 +1,21 @@
 ﻿{
   "api": {
     "provider": "openai",
-    "api_key": "YOUR_API_KEY_HERE",
+    "api_key": "",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o-mini"
   },
   "local_model": {
     "path": "",
     "device": "auto",
-    "load_in_4bit": true
+    "load_in_4bit": true,
+    "engine": "auto"
+  },
+  "llama_cpp": {
+    "path": "",
+    "gpu_layers": 999,
+    "context_size": 4096,
+    "threads": 4
   },
   "rag": {
     "embedding_model": "BAAI/bge-small-zh-v1.5",

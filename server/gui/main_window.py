@@ -236,6 +236,7 @@ class MainWindow:
     
     # ==================== 设置区 ====================
     def _create_settings_tab(self):
+        # API 设置
         api_frame = ttk.LabelFrame(self.settings_frame, text="API 设置", padding="10")
         api_frame.pack(fill=tk.X, padx=10, pady=5)
         
@@ -257,9 +258,11 @@ class MainWindow:
         self.model_var = tk.StringVar(value=self.config["api"]["model"])
         ttk.Entry(row3, textvariable=self.model_var, width=30).pack(side=tk.LEFT, padx=5)
         
-        local_frame = ttk.LabelFrame(self.settings_frame, text="本地模型", padding="10")
+        # 本地模型设置
+        local_frame = ttk.LabelFrame(self.settings_frame, text="本地模型设置", padding="10")
         local_frame.pack(fill=tk.X, padx=10, pady=5)
         
+        # 模型路径
         row4 = ttk.Frame(local_frame)
         row4.pack(fill=tk.X, pady=2)
         ttk.Label(row4, text="模型路径:", width=10).pack(side=tk.LEFT)
@@ -267,9 +270,49 @@ class MainWindow:
         ttk.Entry(row4, textvariable=self.local_model_var, width=50).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         ttk.Button(row4, text="浏览", command=self._browse_model).pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(self.settings_frame, text="保存设置", command=self._save_settings).pack(pady=10)
-    
-    # ==================== Agent 初始化 ====================
+        # 引擎选择
+        row5 = ttk.Frame(local_frame)
+        row5.pack(fill=tk.X, pady=2)
+        ttk.Label(row5, text="推理引擎:", width=10).pack(side=tk.LEFT)
+        self.engine_var = tk.StringVar(value=self.config["local_model"].get("engine", "auto"))
+        ttk.Combobox(row5, textvariable=self.engine_var, values=["auto", "llama_cpp", "transformers"], width=15, state='readonly').pack(side=tk.LEFT, padx=5)
+        ttk.Label(row5, text="(auto: GGUF用llama.cpp, 其他用transformers)").pack(side=tk.LEFT, padx=5)
+        
+        # llama.cpp 设置
+        llama_frame = ttk.LabelFrame(self.settings_frame, text="llama.cpp 设置", padding="10")
+        llama_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        row6 = ttk.Frame(llama_frame)
+        row6.pack(fill=tk.X, pady=2)
+        ttk.Label(row6, text="llama.cpp路径:", width=12).pack(side=tk.LEFT)
+        self.llama_path_var = tk.StringVar(value=self.config.get("llama_cpp", {}).get("path", ""))
+        ttk.Entry(row6, textvariable=self.llama_path_var, width=50).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        ttk.Button(row6, text="浏览", command=self._browse_llama).pack(side=tk.LEFT, padx=5)
+        
+        row7 = ttk.Frame(llama_frame)
+        row7.pack(fill=tk.X, pady=2)
+        ttk.Label(row7, text="GPU层数:", width=12).pack(side=tk.LEFT)
+        self.gpu_layers_var = tk.IntVar(value=self.config.get("llama_cpp", {}).get("gpu_layers", 999))
+        ttk.Spinbox(row7, from_=0, to=999, textvariable=self.gpu_layers_var, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row7, text="(999=全部GPU, 0=纯CPU)").pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(row7, text="上下文大小:", width=12).pack(side=tk.LEFT, padx=(20, 0))
+        self.context_var = tk.IntVar(value=self.config.get("llama_cpp", {}).get("context_size", 4096))
+        ttk.Spinbox(row7, from_=512, to=32768, increment=512, textvariable=self.context_var, width=10).pack(side=tk.LEFT, padx=5)
+        
+        # 保存按钮
+        btn_frame = ttk.Frame(self.settings_frame)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(btn_frame, text="保存设置", command=self._save_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="检查环境", command=self._check_env).pack(side=tk.LEFT, padx=5)
+        
+        # 环境状态
+        env_frame = ttk.LabelFrame(self.settings_frame, text="环境状态", padding="10")
+        env_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        self.env_status = scrolledtext.ScrolledText(env_frame, height=8, font=('Consolas', 9))
+        self.env_status.pack(fill=tk.BOTH, expand=True)
+
     def _init_agent(self):
         def init():
             try:
@@ -536,7 +579,13 @@ class MainWindow:
         self.config["api"]["base_url"] = self.base_url_var.get()
         self.config["api"]["model"] = self.model_var.get()
         self.config["local_model"]["path"] = self.local_model_var.get()
+        self.config["local_model"]["engine"] = self.engine_var.get()
+        self.config["llama_cpp"]["path"] = self.llama_path_var.get()
+        self.config["llama_cpp"]["gpu_layers"] = self.gpu_layers_var.get()
+        self.config["llama_cpp"]["context_size"] = self.context_var.get()
         self._save_config()
         messagebox.showinfo("成功", "设置已保存")
         self._init_agent()
+
+
 
