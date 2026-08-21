@@ -17,13 +17,9 @@ build/
 *.swp
 *.swo
 
-# Data (large files)
-data/vectorstore/
-data/models/
-*.npy
-*.bin
-*.gguf
-*.safetensors
+# Runtime (downloaded)
+runtime/
+models/*.gguf
 
 # Logs
 logs/
