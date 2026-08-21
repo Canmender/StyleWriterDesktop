@@ -6,66 +6,58 @@
 双击 build.bat
 ```
 
-这将自动:
-1. 下载 Python 嵌入式版本
-2. 安装所有依赖包
-3. 下载 llama.cpp (CUDA版)
-4. 下载默认模型 (Qwen2.5-1.5B)
-5. 打包成便携版
-
-## 构建输出
-
-构建完成后，在 `dist/` 目录会生成:
-
-- `StyleWriter-Portable.zip` - 便携版（解压即用）
-
-## 创建安装程序
-
-### 方法1: 使用 NSIS
-
-1. 安装 NSIS: https://nsis.sourceforge.io/Download
-2. 右键 `installer.nsi` -> Compile NSIS Script
-3. 生成 `dist\StyleWriter-Setup.exe`
-
-### 方法2: 使用 Inno Setup
-
-1. 安装 Inno Setup: https://jrsoftware.org/isinfo.php
-2. 打开 `installer.iss`（需要创建）
-3. 编译生成安装程序
-
-## 用户使用
-
-### 便携版
-1. 解压 `StyleWriter-Portable.zip`
-2. 运行 `StyleWriter.bat`
-
-### 安装版
-1. 运行 `StyleWriter-Setup.exe`
-2. 按提示安装
-3. 从桌面快捷方式启动
-
-## 包含内容
+## 构建内容
 
 | 组件 | 大小 | 说明 |
 |------|------|------|
 | Python | ~30MB | 嵌入式版本 |
 | 依赖包 | ~500MB | PyTorch等 |
 | llama.cpp | ~50MB | CUDA版本 |
-| 模型 | ~1GB | Qwen2.5-1.5B |
 | 应用 | ~1MB | StyleWriter |
 
-总计约 1.6GB
+**注意: 不包含模型，用户自行下载**
 
-## 自定义
+## 构建输出
 
-### 更换模型
+```
+dist/
+└── StyleWriter-Portable.zip  # 便携版（约 600MB）
+```
 
-1. 下载其他 GGUF 模型
-2. 替换 `models/` 目录中的文件
-3. 修改 `app/config/settings.json` 中的模型路径
+## 用户使用
 
-### 更换 llama.cpp
+### 1. 解压
+解压 `StyleWriter-Portable.zip`
 
-1. 下载其他版本的 llama.cpp
-2. 替换 `llama-cpp/` 目录
+### 2. 启动
+双击 `StyleWriter.bat`
+
+### 3. 下载模型
+从以下地址下载 GGUF 模型:
+- HuggingFace: https://huggingface.co/models?search=gguf
+- ModelScope: https://modelscope.cn/models?search=gguf
+
+推荐模型:
+- Qwen2.5-7B-Instruct-GGUF (~4GB)
+- Qwen2.5-1.5B-Instruct-GGUF (~1GB)
+
+### 4. 配置模型
+- 将 .gguf 文件放入 `app/models/` 目录
+- 或在设置中配置模型完整路径
+
+### 5. 开始使用
+输入主题，生成文章
+
+## 创建安装程序（可选）
+
+### 使用 NSIS
+
+1. 安装 NSIS: https://nsis.sourceforge.io/Download
+2. 右键 `installer.nsi` -> Compile
+3. 生成 `dist\StyleWriter-Setup.exe`
+
+### 使用 Inno Setup
+
+1. 安装 Inno Setup: https://jrsoftware.org/isinfo.php
+2. 创建脚本并编译
 

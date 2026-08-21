@@ -1,6 +1,6 @@
 ﻿"""
 构建完整安装包
-下载所有依赖并打包成安装程序
+下载所有依赖并打包（不含模型，用户自选）
 """
 
 import os
@@ -35,8 +35,6 @@ class DownloadProgress:
 def download_file(url, dest_path, desc=""):
     """下载文件"""
     print(f"\n下载: {desc}")
-    print(f"URL: {url}")
-    
     try:
         progress = DownloadProgress(desc)
         urlretrieve(url, dest_path, progress)
@@ -60,7 +58,7 @@ def extract_zip(zip_path, extract_to):
 def step1_download_python():
     """下载嵌入式 Python"""
     print("\n" + "="*60)
-    print("[1/4] 下载 Python 嵌入式版本")
+    print("[1/3] 下载 Python 嵌入式版本")
     print("="*60)
     
     python_dir = INSTALLER_DIR / "python"
@@ -90,11 +88,9 @@ def step1_download_python():
     get_pip_path = python_dir / "get-pip.py"
     download_file(get_pip_url, get_pip_path, "pip")
     
-    # 安装 pip
     subprocess.run([str(python_dir / "python.exe"), str(get_pip_path)], 
                    cwd=str(python_dir), capture_output=True)
     
-    # 清理
     zip_path.unlink(missing_ok=True)
     get_pip_path.unlink(missing_ok=True)
     
@@ -104,7 +100,7 @@ def step1_download_python():
 def step2_install_packages():
     """安装 Python 包"""
     print("\n" + "="*60)
-    print("[2/4] 安装 Python 依赖包")
+    print("[2/3] 安装 Python 依赖包")
     print("="*60)
     
     python_exe = INSTALLER_DIR / "python" / "python.exe"
@@ -134,20 +130,19 @@ def step2_install_packages():
     
     if result.returncode == 0:
         print("[OK] 依赖安装完成")
-        return True
     else:
-        print(f"[WARN] 部分依赖可能安装失败")
-        return True  # 继续
+        print("[WARN] 部分依赖可能安装失败，继续...")
+    
+    return True
 
 def step3_download_llama_cpp():
     """下载 llama.cpp"""
     print("\n" + "="*60)
-    print("[3/4] 下载 llama.cpp")
+    print("[3/3] 下载 llama.cpp")
     print("="*60)
     
     llama_dir = INSTALLER_DIR / "llama-cpp"
     
-    # 检查是否已存在
     for exe in ["llama-cli.exe", "main.exe"]:
         if (llama_dir / exe).exists():
             print("[OK] llama.cpp 已存在")
@@ -158,7 +153,6 @@ def step3_download_llama_cpp():
     zip_path = BUILD_DIR / "llama-cpp.zip"
     
     if not download_file(url, zip_path, "llama.cpp (CUDA)"):
-        # 尝试 CPU 版本
         url_cpu = "https://github.com/ggerganov/llama.cpp/releases/download/b3800/llama-b3800-bin-win-x64.zip"
         if not download_file(url_cpu, zip_path, "llama.cpp (CPU)"):
             return False
@@ -171,34 +165,7 @@ def step3_download_llama_cpp():
     print("[OK] llama.cpp 安装完成")
     return True
 
-def step4_download_model():
-    """下载默认模型"""
-    print("\n" + "="*60)
-    print("[4/4] 下载默认模型")
-    print("="*60)
-    
-    models_dir = INSTALLER_DIR / "models"
-    model_file = models_dir / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    
-    if model_file.exists():
-        print("[OK] 模型已存在")
-        return True
-    
-    models_dir.mkdir(exist_ok=True)
-    
-    # Qwen2.5-1.5B 小模型
-    url = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    
-    if not download_file(url, model_file, "Qwen2.5-1.5B (~1GB)"):
-        # 备用
-        url_backup = "https://modelscope.cn/models/qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-        if not download_file(url_backup, model_file, "Qwen2.5-1.5B (备用)"):
-            return False
-    
-    print("[OK] 模型下载完成")
-    return True
-
-def step5_copy_app():
+def step4_copy_app():
     """复制应用文件"""
     print("\n复制应用文件...")
     
@@ -206,24 +173,13 @@ def step5_copy_app():
     app_dir.mkdir(exist_ok=True)
     
     # 复制核心文件
-    files_to_copy = [
-        "main.py",
-        "requirements.txt",
-    ]
-    
-    for f in files_to_copy:
+    for f in ["main.py", "requirements.txt"]:
         src = PROJECT_ROOT / f
         if src.exists():
             shutil.copy2(src, app_dir / f)
     
     # 复制目录
-    dirs_to_copy = [
-        "server",
-        "config",
-        "training",
-    ]
-    
-    for d in dirs_to_copy:
+    for d in ["server", "config", "training"]:
         src = PROJECT_ROOT / d
         if src.exists():
             dst = app_dir / d
@@ -232,10 +188,10 @@ def step5_copy_app():
             shutil.copytree(src, dst)
     
     # 创建数据目录
-    for d in ["data/examples", "data/vectorstore", "output", "logs"]:
+    for d in ["data/examples", "data/vectorstore", "models", "output", "logs"]:
         (app_dir / d).mkdir(parents=True, exist_ok=True)
     
-    # 更新配置
+    # 更新配置（不设置默认模型）
     config_file = app_dir / "config" / "settings.json"
     config = {
         "api": {
@@ -245,10 +201,10 @@ def step5_copy_app():
             "model": "gpt-4o-mini"
         },
         "local_model": {
-            "path": "../models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            "path": "",
             "device": "auto",
             "load_in_4bit": True,
-            "engine": "llama_cpp"
+            "engine": "auto"
         },
         "llama_cpp": {
             "path": "../llama-cpp",
@@ -273,7 +229,7 @@ def step5_copy_app():
     print("[OK] 应用文件复制完成")
     return True
 
-def step6_create_launcher():
+def step5_create_launcher():
     """创建启动脚本"""
     print("\n创建启动脚本...")
     
@@ -285,76 +241,64 @@ cd /d "%~dp0"
 start "" "python\python.exe" "app\main.py"
 ''', encoding='utf-8')
     
-    # 创建快捷方式脚本
-    shortcut = INSTALLER_DIR / "create_shortcut.vbs"
-    shortcut.write_text('''Set oWS = WScript.CreateObject("WScript.Shell")
-sLinkFile = oWS.SpecialFolders("Desktop") & "\StyleWriter.lnk"
-Set oLink = oWS.CreateShortcut(sLinkFile)
-oLink.TargetPath = WScript.ScriptFullName & "\..\StyleWriter.bat"
-oLink.WorkingDirectory = WScript.ScriptFullName & "\.."
-oLink.Description = "StyleWriter Desktop"
-oLink.Save
-''', encoding='utf-8')
+    # 模型下载说明
+    readme = INSTALLER_DIR / "下载模型说明.txt"
+    readme.write_text("""StyleWriter Desktop - 模型下载说明
+
+========================================
+首次使用请下载 GGUF 模型
+========================================
+
+推荐模型下载地址:
+1. HuggingFace: https://huggingface.co/models?search=gguf
+2. ModelScope: https://modelscope.cn/models?search=gguf
+
+推荐模型:
+- Qwen2.5-7B-Instruct-GGUF (约4GB，效果好)
+- Qwen2.5-1.5B-Instruct-GGUF (约1GB，速度快)
+- Llama-3.1-8B-Instruct-GGUF (约4.5GB，英文强)
+
+========================================
+使用方法
+========================================
+
+方法一: 放入 models 目录
+1. 下载 .gguf 文件
+2. 放入 app/models/ 目录
+3. 启动程序，在设置中选择模型
+
+方法二: 任意位置
+1. 下载 .gguf 文件
+2. 启动程序
+3. 在设置中配置模型完整路径
+
+========================================
+""", encoding='utf-8')
     
     print("[OK] 启动脚本创建完成")
     return True
 
-def step7_create_installer():
-    """创建安装程序 (使用 NSIS 或 7-Zip 自解压)"""
+def step6_create_package():
+    """创建安装包"""
     print("\n" + "="*60)
-    print("创建安装程序")
+    print("创建安装包")
     print("="*60)
     
-    # 方法1: 使用 7-Zip 创建自解压包
-    output_file = DIST_DIR / "StyleWriter-Setup.exe"
     DIST_DIR.mkdir(exist_ok=True)
     
-    # 检查 7z
-    seven_zip = None
-    for path in ["C:\Program Files\7-Zip\7z.exe", "C:\Program Files (x86)\7-Zip\7z.exe"]:
-        if os.path.exists(path):
-            seven_zip = path
-            break
+    # 创建 ZIP 便携版
+    zip_file = DIST_DIR / "StyleWriter-Portable.zip"
     
-    if seven_zip:
-        print("使用 7-Zip 创建自解压包...")
-        
-        # 创建自解压配置
-        sfx_config = BUILD_DIR / "sfx_config.txt"
-        sfx_config.write_text(""";!@Install@!UTF-8!
-Title="StyleWriter Desktop 安装"
-BeginPrompt="是否安装 StyleWriter Desktop？"
-ExecuteFile="python\python.exe"
-ExecuteParameters="app\main.py"
-Directory="%ProgramFiles%\StyleWriter"
-RunProgram="f: StyleWriter.bat"
-;!@InstallEnd@!
-""", encoding='utf-8')
-        
-        # 先打包成 7z
-        archive = BUILD_DIR / "StyleWriter.7z"
-        subprocess.run([seven_zip, "a", "-mx=5", str(archive), str(INSTALLER_DIR) + "\*"])
-        
-        # 创建自解压
-        sfx_module = BUILD_DIR / "7zS.sfx"
-        if not sfx_module.exists():
-            # 下载 SFX 模块
-            sfx_url = "https://www.7-zip.org/a/7z2301-extra.7z"
-            download_file(sfx_url, BUILD_DIR / "7z-extra.7z", "7-Zip SFX")
-        
-        print(f"[OK] 安装包创建完成: {output_file}")
-    else:
-        # 方法2: 创建 ZIP 包
-        print("7-Zip 未找到，创建 ZIP 包...")
-        zip_file = DIST_DIR / "StyleWriter-Portable.zip"
-        
-        shutil.make_archive(
-            str(DIST_DIR / "StyleWriter-Portable"),
-            'zip',
-            str(INSTALLER_DIR)
-        )
-        
-        print(f"[OK] 便携版创建完成: {zip_file}")
+    print("打包中...")
+    shutil.make_archive(
+        str(DIST_DIR / "StyleWriter-Portable"),
+        'zip',
+        str(INSTALLER_DIR)
+    )
+    
+    size_mb = zip_file.stat().st_size / (1024 * 1024)
+    print(f"[OK] 便携版创建完成: {zip_file}")
+    print(f"     大小: {size_mb:.1f} MB")
     
     return True
 
@@ -362,6 +306,13 @@ def main():
     """主函数"""
     print("="*60)
     print("StyleWriter Desktop - 构建安装包")
+    print("="*60)
+    print("\n构建内容:")
+    print("  - Python 嵌入式版本")
+    print("  - 依赖包 (PyTorch, transformers 等)")
+    print("  - llama.cpp (CUDA版)")
+    print("  - 应用程序")
+    print("\n注意: 不包含模型，用户自行下载")
     print("="*60)
     
     # 清理
@@ -375,10 +326,9 @@ def main():
         ("下载 Python", step1_download_python),
         ("安装依赖", step2_install_packages),
         ("下载 llama.cpp", step3_download_llama_cpp),
-        ("下载模型", step4_download_model),
-        ("复制应用", step5_copy_app),
-        ("创建启动脚本", step6_create_launcher),
-        ("创建安装包", step7_create_installer),
+        ("复制应用", step4_copy_app),
+        ("创建启动脚本", step5_create_launcher),
+        ("创建安装包", step6_create_package),
     ]
     
     for name, func in steps:
@@ -393,8 +343,12 @@ def main():
     print("\n" + "="*60)
     print("构建完成!")
     print("="*60)
-    print(f"\n输出目录: {DIST_DIR}")
-    print("\n用户只需解压后运行 StyleWriter.bat 即可使用")
+    print(f"\n输出: {DIST_DIR / 'StyleWriter-Portable.zip'}")
+    print("\n用户使用方法:")
+    print("1. 解压 ZIP")
+    print("2. 运行 StyleWriter.bat")
+    print("3. 下载 GGUF 模型")
+    print("4. 开始使用")
 
 if __name__ == "__main__":
     main()
