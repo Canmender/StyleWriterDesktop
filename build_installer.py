@@ -148,14 +148,27 @@ def step3_download_llama_cpp():
             print("[OK] llama.cpp 已存在")
             return True
     
-    # CUDA 版本
-    url = "https://github.com/ggerganov/llama.cpp/releases/download/b3800/llama-b3800-bin-win-cuda-cu12.2-x64.zip"
+    # llama.cpp 下载
     zip_path = BUILD_DIR / "llama-cpp.zip"
     
-    if not download_file(url, zip_path, "llama.cpp (CUDA)"):
-        url_cpu = "https://github.com/ggerganov/llama.cpp/releases/download/b3800/llama-b3800-bin-win-x64.zip"
-        if not download_file(url_cpu, zip_path, "llama.cpp (CPU)"):
-            return False
+    # 尝试多个版本
+    urls = [
+        ("https://github.com/ggerganov/llama.cpp/releases/download/b4078/llama-b4078-bin-win-cuda-cu12.4-x64.zip", "llama.cpp (CUDA 12.4)"),
+        ("https://github.com/ggerganov/llama.cpp/releases/download/b4078/llama-b4078-bin-win-cuda-cu12.2-x64.zip", "llama.cpp (CUDA 12.2)"),
+        ("https://github.com/ggerganov/llama.cpp/releases/download/b4078/llama-b4078-bin-win-x64.zip", "llama.cpp (CPU)"),
+        ("https://github.com/ggerganov/llama.cpp/releases/download/b3800/llama-b3800-bin-win-x64.zip", "llama.cpp (CPU old)"),
+    ]
+    
+    downloaded = False
+    for url, desc in urls:
+        if download_file(url, zip_path, desc):
+            downloaded = True
+            break
+    
+    if not downloaded:
+        print("[ERROR] llama.cpp 下载失败，请手动下载")
+        print("地址: https://github.com/ggerganov/llama.cpp/releases")
+        return False
     
     if not extract_zip(zip_path, llama_dir):
         return False
@@ -352,4 +365,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
 
